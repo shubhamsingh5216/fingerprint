@@ -77,7 +77,7 @@ class MatchFingerprintView(APIView):
             score = len(good_matches) / len(input_des)
             print(f"Comparing with {fingerprint.name}: score = {score}")
 
-            if score < best_score:
+            if score > best_score:
                 best_score = score
                 best_match = fingerprint.name
 
