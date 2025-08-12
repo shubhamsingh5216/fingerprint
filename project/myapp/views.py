@@ -64,7 +64,7 @@ class MatchFingerprintView(APIView):
         for fingerprint in Fingerprint.objects.all():
             if fingerprint.descriptors is None:
                 continue
-try
+
             try:
                 db_des = np.frombuffer(fingerprint.descriptors, dtype=np.uint8).reshape(-1, 32)
             except ValueError:
@@ -77,7 +77,7 @@ try
             score = len(good_matches) / len(input_des)
             print(f"Comparing with {fingerprint.name}: score = {score}")
 
-            if score > best_score:
+            if score < best_score:
                 best_score = score
                 best_match = fingerprint.name
 
