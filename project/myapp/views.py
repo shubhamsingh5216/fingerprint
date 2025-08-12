@@ -11,7 +11,8 @@ def extract_orb_features(image_path):
     img = cv2.imread(image_path, 0)
     if img is None:
         return None
-    orb = cv2.ORB_create()
+    # Increase keypoints and make it scale invariant
+    orb = cv2.ORB_create(nfeatures=1500, scaleFactor=1.2)
     keypoints, descriptors = orb.detectAndCompute(img, None)
     return descriptors
 
@@ -27,14 +28,19 @@ class AddFingerprintView(APIView):
         if not os.path.exists(image_path):
             return Response({'error': 'Image path does not exist'}, status=400)
 
-        descriptors = extract_orb_features(image_path)
+        # Extract fingerprint descriptors
+        input_des = extract_orb_features(image_path)
+        print(f"Input descriptors shape: {input_des.shape if input_des is not None else 'None'}")
 
-        if descriptors is None:
-            return Response({'error': 'No features found in image'}, status=400)
+        if input_des is None:
+            return Response({'error': 'Could not extract features from image'}, status=400)
+
+        # Ensure dtype and save
+        input_des = input_des.astype(np.uint8)
 
         fingerprint = Fingerprint(name=name)
         fingerprint.image.save(os.path.basename(image_path), open(image_path, 'rb'))
-        fingerprint.descriptors = descriptors.tobytes()
+        fingerprint.descriptors = input_des.tobytes()
         fingerprint.save()
 
         return Response({'message': 'Fingerprint added successfully'}, status=201)
@@ -47,9 +53,10 @@ class MatchFingerprintView(APIView):
             return Response({"error": "Image not found in request or path invalid"}, status=400)
 
         input_des = extract_orb_features(image_path)
-
         if input_des is None:
             return Response({'error': 'No descriptors found in input image'}, status=400)
+
+        input_des = input_des.astype(np.uint8)
 
         best_match = None
         best_score = 0
@@ -58,22 +65,32 @@ class MatchFingerprintView(APIView):
             if fingerprint.descriptors is None:
                 continue
 
-            db_des = np.frombuffer(fingerprint.descriptors, dtype=np.uint8).reshape(-1, 32)
+            try:
+                db_des = np.frombuffer(fingerprint.descriptors, dtype=np.uint8).reshape(-1, 32)
+            except ValueError:
+                continue  # Skip corrupted descriptor data
 
-            bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
-            matches = bf.match(input_des, db_des)
-            good_matches = [m for m in matches if m.distance < 60]
+            bf = cv2.BFMatcher(cv2.NORM_HAMMING)
+            matches = bf.knnMatch(input_des, db_des, k=2)
+            good_matches = [m for m, n in matches if m.distance < 0.75 * n.distance]
 
-            score = len(good_matches) / len(input_des) if len(input_des) > 0 else 0
+            score = len(good_matches) / len(input_des)
+            print(f"Comparing with {fingerprint.name}: score = {score}")
 
             if score > best_score:
                 best_score = score
                 best_match = fingerprint.name
 
-        if best_score >= 0.1:
+        if best_score >= 0.5:
             return Response({
                 'match': best_match,
                 'score': round(best_score, 2)
             })
         else:
-            return Response({'message': 'No match found'}, status=404)
+            print(f"Comparing with {fingerprint.name}: score = {score}")
+            return Response({
+            'message': 'No match found',
+            'score': score
+        }, status=404)
+
+            
