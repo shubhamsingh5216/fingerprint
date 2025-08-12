@@ -64,7 +64,7 @@ class MatchFingerprintView(APIView):
         for fingerprint in Fingerprint.objects.all():
             if fingerprint.descriptors is None:
                 continue
-
+try
             try:
                 db_des = np.frombuffer(fingerprint.descriptors, dtype=np.uint8).reshape(-1, 32)
             except ValueError:
